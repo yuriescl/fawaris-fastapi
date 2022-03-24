@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timezone
 from typing import List, Callable, Any, Optional, Union, Dict
 from databases import Database
 from fastapi import Depends, Request
@@ -149,10 +150,7 @@ class Sep24(fawaris.Sep24):
                 code=request.asset_code, issuer=self.asset_issuers[request.asset_code]
             ),
         )
-        values = transaction.dict()
-        values["asset_code"] = transaction.asset.code
-        values["asset_issuer"] = transaction.asset.issuer
-        values.pop("asset")
+        values = self.transaction_to_values(transaction)
         await self.database.execute(query=query, values=values)
         return transaction
 
@@ -200,13 +198,56 @@ class Sep24(fawaris.Sep24):
 
     @overrides
     async def is_deposit_received(self, deposit: fawaris.Sep24Transaction) -> bool:
-        raise NotImplementedError()
+        return False
 
     @overrides
     async def is_withdrawal_complete(
         self, withdrawal: fawaris.Sep24Transaction
     ) -> bool:
-        raise NotImplementedError()
+        return False
+
+    @overrides
+    async def process_withdrawal_received(self,
+        transaction: fawaris.Sep24Transaction,
+        amount_received: str,
+        from_address: str,
+        horizon_response: Dict,
+    ):
+        if Decimal(amount) != Decimal(transaction.amount_in):
+            await asyncio.gather(*[
+                self.log_transaction_message(
+                    transaction,
+                    (
+                        "Expected withdrawal amount_in={} differs from "
+                        "received (stellar_transaction_id={}) withdrawal "
+                        "amount_in={}".format(
+                            transaction.amount_in, horizon_response["id"], amount
+                        )
+                    )
+                ),
+                self.update_transactions(
+                    [transaction],
+                    status="error",
+                    stellar_transaction_id=horizon_response["id"],
+                    paging_token=horizon_response["paging_token"],
+                )
+            ])
+        else:
+            await asyncio.gather(*[
+                self.log_transaction_message(
+                    transaction,
+                    "Withdrawal received with correct amount (stellar_transaction_id={})".format(
+                        horizon_response["id"]
+                    )
+                ),
+                self.update_transactions(
+                    [transaction],
+                    status="pending_anchor",
+                    from_address=from_address,
+                    stellar_transaction_id=horizon_response["id"],
+                    paging_token=horizon_response["paging_token"],
+                )
+            ])
 
     @overrides
     async def update_transactions(
@@ -230,7 +271,16 @@ class Sep24(fawaris.Sep24):
 
     @overrides
     async def get_withdraw_anchor_account_cursor(self, account: str) -> Optional[str]:
-        raise NotImplementedError()
+        query = tables.sep24_transactions.select().\
+            where(tables.sep24_transactions.c.kind == "withdrawal").\
+            where(tables.sep24_transactions.c.withdraw_anchor_account == account).\
+            where(tables.sep24_transactions.c.status == "completed").\
+            order_by(tables.sep24_transactions.c.started_at.desc())
+        completed_transactions = []
+        row = await self.database.fetch_one(query)
+        if row:
+            return row_to_transaction(row).paging_token
+        return None
 
     def row_to_transaction(self, row):
         row = dict(row)
@@ -240,3 +290,18 @@ class Sep24(fawaris.Sep24):
             **{**row, "asset": fawaris.Asset(code=asset_code, issuer=asset_issuer)}
         )
         return transaction
+
+    def transaction_to_values(self, transaction: Sep24Transaction):
+        values = transaction.dict()
+        values["asset_code"] = transaction.asset.code
+        values["asset_issuer"] = transaction.asset.issuer
+        values.pop("asset")
+        return values
+
+    async def log_transaction_message(transaction: Sep24Transaction, message: str):
+        query = tables.sep24_transaction_logs.insert()
+        await self.database.execute(query=query, values={
+            "timestamp": datetime.now(timezone.utc),
+            "transaction_id": str(transaction.id),
+            "message": message,
+        })
