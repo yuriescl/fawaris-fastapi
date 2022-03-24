@@ -1,0 +1,26 @@
+[tool.poetry]
+name = "gamma_fawaris"
+version = "0.1.0"
+description = "Stellar Anchor implementation based on fawaris"
+authors = ["Yuri Escalianti <yuriescl@gmail.com>"]
+license = "Apache License Version 2.0"
+
+[tool.poetry.dependencies]
+python = "^3.7"
+fawaris = {path = "../fawaris-python"}
+databases = {extras = ["aiosqlite"], version = "^0.5.5"}
+uvicorn = "^0.17.6"
+fastapi = "^0.75.0"
+overrides = "^6.1.0"
+aiosqlite = "^0.17.0"
+python-multipart = "^0.0.5"
+typer = "^0.4.0"
+
+[tool.poetry.dev-dependencies]
+ipython = "7.32.0"
+flake8 = "^4.0.1"
+black = "^22.1.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
