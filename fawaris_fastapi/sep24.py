@@ -3,6 +3,7 @@ import asyncio
 from decimal import Decimal
 from datetime import datetime, timezone
 from typing import List, Callable, Any, Optional, Union, Dict
+from fastapi import FastAPI
 from pydantic import Field
 from databases import Database
 from fastapi import Depends, Request
@@ -22,71 +23,6 @@ from fawaris_fastapi.utils import (
     get_claimable_balance_id,
     validate_request_data,
 )
-
-
-def new(database: Database):
-    return Sep24(
-        database=database,
-        sep10_jwt_secret=settings.JWT_SECRET,
-        distribution_secret=settings.DISTRIBUTION_SECRET,
-        horizon_url=settings.HORIZON_URL,
-        network_passphrase=settings.NETWORK_PASSPHRASE,
-        assets={
-            "USDC": fawaris.Asset(
-                code="USDC",
-                issuer="GCCGEMWASPXY4HWAJTH2BDYKYMLVOAH4K657IDLM5ZE7DGJJCY5EY53J",
-                decimal_places=7,
-            )
-        },
-    )
-
-
-def register_routes(app, sep24_obj: fawaris.Sep24):
-    @app.post("/sep24/transactions/deposit/interactive")
-    async def http_post_transactions_deposit_interactive(
-        request=Depends(authenticate(sep24_obj.sep10_jwt_secret)),
-    ):
-        data = await detect_and_get_request_data(request)
-        req = validate_request_data(data, fawaris.Sep24DepositPostRequest)
-        return await sep24_obj.http_post_transactions_deposit_interactive(
-            req, request.token
-        )
-
-    @app.post("/sep24/transactions/withdraw/interactive")
-    async def http_post_transactions_withdraw_interactive(
-        request=Depends(authenticate(sep24_obj.sep10_jwt_secret)),
-    ):
-        data = await detect_and_get_request_data(request)
-        req = validate_request_data(data, fawaris.Sep24WithdrawPostRequest)
-        return await sep24_obj.http_post_transactions_withdraw_interactive(
-            req, request.token
-        )
-
-    @app.get("/sep24/info")
-    async def http_get_info(request: Request):
-        req = validate_request_data(
-            dict(request.query_params), fawaris.Sep24InfoRequest
-        )
-        return await sep24_obj.http_get_info(req)
-
-    @app.get("/sep24/transactions")
-    async def http_get_transactions(
-        request=Depends(authenticate(sep24_obj.sep10_jwt_secret)),
-    ):
-        req = validate_request_data(
-            dict(request.query_params), fawaris.Sep24TransactionsGetRequest
-        )
-        return await sep24_obj.http_get_transactions(req, request.token)
-
-    @app.get("/sep24/transaction")
-    async def http_get_transaction(
-        request=Depends(authenticate(sep24_obj.sep10_jwt_secret)),
-    ):
-        req = validate_request_data(
-            dict(request.query_params), fawaris.Sep24TransactionGetRequest
-        )
-        return await sep24_obj.http_get_transaction(req, request.token)
-
 
 class Sep24Transaction(fawaris.Sep24Transaction):
     asset: fawaris.Asset = Field(..., exclude=True)
@@ -146,6 +82,69 @@ class Sep24(fawaris.Sep24):
         self.network_passphrase = network_passphrase
         self.assets = assets
         self.log = log
+
+    @classmethod
+    def new_instance(cls, database: Database):
+        return cls(
+            database=database,
+            sep10_jwt_secret=settings.JWT_SECRET,
+            distribution_secret=settings.DISTRIBUTION_SECRET,
+            horizon_url=settings.HORIZON_URL,
+            network_passphrase=settings.NETWORK_PASSPHRASE,
+            assets={
+                "USDC": fawaris.Asset(
+                    code="USDC",
+                    issuer="GCCGEMWASPXY4HWAJTH2BDYKYMLVOAH4K657IDLM5ZE7DGJJCY5EY53J",
+                    decimal_places=7,
+                )
+            },
+        )
+
+    def register_routes(self, app: FastAPI):
+        @app.post("/sep24/transactions/deposit/interactive")
+        async def http_post_transactions_deposit_interactive(
+            request=Depends(authenticate(self.sep10_jwt_secret)),
+        ):
+            data = await detect_and_get_request_data(request)
+            req = validate_request_data(data, fawaris.Sep24DepositPostRequest)
+            return await self.http_post_transactions_deposit_interactive(
+                req, request.token
+            )
+
+        @app.post("/sep24/transactions/withdraw/interactive")
+        async def http_post_transactions_withdraw_interactive(
+            request=Depends(authenticate(self.sep10_jwt_secret)),
+        ):
+            data = await detect_and_get_request_data(request)
+            req = validate_request_data(data, fawaris.Sep24WithdrawPostRequest)
+            return await self.http_post_transactions_withdraw_interactive(
+                req, request.token
+            )
+
+        @app.get("/sep24/info")
+        async def http_get_info(request: Request):
+            req = validate_request_data(
+                dict(request.query_params), fawaris.Sep24InfoRequest
+            )
+            return await self.http_get_info(req)
+
+        @app.get("/sep24/transactions")
+        async def http_get_transactions(
+            request=Depends(authenticate(self.sep10_jwt_secret)),
+        ):
+            req = validate_request_data(
+                dict(request.query_params), fawaris.Sep24TransactionsGetRequest
+            )
+            return await self.http_get_transactions(req, request.token)
+
+        @app.get("/sep24/transaction")
+        async def http_get_transaction(
+            request=Depends(authenticate(self.sep10_jwt_secret)),
+        ):
+            req = validate_request_data(
+                dict(request.query_params), fawaris.Sep24TransactionGetRequest
+            )
+            return await self.http_get_transaction(req, request.token)
 
     @overrides
     async def http_get_fee(
