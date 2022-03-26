@@ -11,6 +11,7 @@ from abc import ABC, abstractmethod
 import fawaris
 
 from fawaris_fastapi import tables
+from fawaris_fastapi import settings
 from fawaris_fastapi.utils import (
     authenticate,
     detect_and_get_request_data,
@@ -23,10 +24,27 @@ from fawaris_fastapi.utils import (
 )
 
 
+def new(database: Database):
+    return Sep24(
+        database=database,
+        sep10_jwt_secret=settings.JWT_SECRET,
+        distribution_secret=settings.DISTRIBUTION_SECRET,
+        horizon_url=settings.HORIZON_URL,
+        network_passphrase=settings.NETWORK_PASSPHRASE,
+        assets={
+            "USDC": fawaris.Asset(
+                code="USDC",
+                issuer="GCCGEMWASPXY4HWAJTH2BDYKYMLVOAH4K657IDLM5ZE7DGJJCY5EY53J",
+                decimal_places=7,
+            )
+        },
+    )
+
+
 def register_routes(app, sep24_obj: fawaris.Sep24):
     @app.post("/sep24/transactions/deposit/interactive")
     async def http_post_transactions_deposit_interactive(
-        request=Depends(authenticate(sep24_obj.sep10_jwt_key)),
+        request=Depends(authenticate(sep24_obj.sep10_jwt_secret)),
     ):
         data = await detect_and_get_request_data(request)
         req = validate_request_data(data, fawaris.Sep24DepositPostRequest)
@@ -36,7 +54,7 @@ def register_routes(app, sep24_obj: fawaris.Sep24):
 
     @app.post("/sep24/transactions/withdraw/interactive")
     async def http_post_transactions_withdraw_interactive(
-        request=Depends(authenticate(sep24_obj.sep10_jwt_key)),
+        request=Depends(authenticate(sep24_obj.sep10_jwt_secret)),
     ):
         data = await detect_and_get_request_data(request)
         req = validate_request_data(data, fawaris.Sep24WithdrawPostRequest)
@@ -46,21 +64,27 @@ def register_routes(app, sep24_obj: fawaris.Sep24):
 
     @app.get("/sep24/info")
     async def http_get_info(request: Request):
-        req = validate_request_data(dict(request.query_params), fawaris.Sep24InfoRequest)
+        req = validate_request_data(
+            dict(request.query_params), fawaris.Sep24InfoRequest
+        )
         return await sep24_obj.http_get_info(req)
 
     @app.get("/sep24/transactions")
     async def http_get_transactions(
-        request=Depends(authenticate(sep24_obj.sep10_jwt_key)),
+        request=Depends(authenticate(sep24_obj.sep10_jwt_secret)),
     ):
-        req = validate_request_data(dict(request.query_params), fawaris.Sep24TransactionsGetRequest)
+        req = validate_request_data(
+            dict(request.query_params), fawaris.Sep24TransactionsGetRequest
+        )
         return await sep24_obj.http_get_transactions(req, request.token)
 
     @app.get("/sep24/transaction")
     async def http_get_transaction(
-        request=Depends(authenticate(sep24_obj.sep10_jwt_key)),
+        request=Depends(authenticate(sep24_obj.sep10_jwt_secret)),
     ):
-        req = validate_request_data(dict(request.query_params), fawaris.Sep24TransactionGetRequest)
+        req = validate_request_data(
+            dict(request.query_params), fawaris.Sep24TransactionGetRequest
+        )
         return await sep24_obj.http_get_transaction(req, request.token)
 
 
@@ -68,61 +92,60 @@ class Sep24Transaction(fawaris.Sep24Transaction):
     asset: fawaris.Asset = Field(..., exclude=True)
     paging_token: Optional[str] = Field(None, exclude=True)
     claimable_balance_supported: Optional[str] = Field(None, exclude=True)
+    stellar_transaction_response: Optional[str] = Field(None, exclude=True)
+
+    @staticmethod
+    def from_db_row(row, *, assets: Dict[str, fawaris.Asset]):
+        row = dict(row)
+        asset_code = row.pop("asset_code")
+        asset_issuer = row.pop("asset_issuer")
+        transaction = Sep24Transaction(
+            **{
+                **row,
+                "asset": assets[asset_code],
+            }
+        )
+        return transaction
+
+    @staticmethod
+    def to_db_values(transaction):
+        values = {
+            "asset_code": transaction.asset.code,
+            "asset_issuer": transaction.asset.issuer,
+            "paging_token": transaction.paging_token,
+            "claimable_balance_supported": transaction.claimable_balance_supported,
+            "stellar_transaction_response": transaction.stellar_transaction_response,
+        }
+        values.update(transaction.dict())
+        return values
 
 
 class Sep24(fawaris.Sep24):
-    sep10_jwt_key: str
-    distribution_secret: str
     database: Database
-    log: Callable[[str], Any]
+    sep10_jwt_secret: str
+    distribution_secret: str
+    horizon_url: str
+    network_passphrase: str
     assets: Dict[str, fawaris.Asset]
+    log: Callable[[str], Any]
 
     def __init__(
         self,
-        sep10_jwt_key: str,
-        distribution_secret: str,
         database: Database,
+        sep10_jwt_secret: str,
+        distribution_secret: str,
+        horizon_url: str,
+        network_passphrase: str,
         assets: Dict[str, fawaris.Asset],
         log: Optional[Callable[[str], Any]] = lambda msg: None,
     ):
-        self.sep10_jwt_key = sep10_jwt_key
-        self.distribution_secret = distribution_secret
         self.database = database
+        self.sep10_jwt_secret = sep10_jwt_secret
+        self.distribution_secret = distribution_secret
+        self.horizon_url = horizon_url
+        self.network_passphrase = network_passphrase
         self.assets = assets
         self.log = log
-
-    async def http_post_transactions_deposit_interactive(
-        self, request: fawaris.Sep24DepositPostRequest, token: fawaris.Sep10Token
-    ) -> fawaris.Sep24PostResponse:
-        info = await self.http_get_info(fawaris.Sep24InfoRequest(lang=request.lang))
-        try:
-            if not info["deposit"][request.asset_code].enabled:
-                raise KeyError()
-        except KeyError:
-            raise ValueError(f"Deposit is not enabled for asset {request.asset_code}")
-        tx = await self.create_transaction(request, token)
-        url = await self.get_interactive_url(request, token, tx)
-        return fawaris.Sep24PostResponse(
-            url=url,
-            id=tx.id,
-        )
-
-    async def http_post_transactions_withdraw_interactive(
-        self, request: fawaris.Sep24WithdrawPostRequest, token: fawaris.Sep10Token
-    ) -> fawaris.Sep24PostResponse:
-        info = await self.http_get_info(fawaris.Sep24InfoRequest(lang=request.lang))
-        try:
-            if not info["withdraw"][request.asset_code].enabled:
-                raise KeyError()
-        except KeyError:
-            raise ValueError(f"Withdrawal is not enabled for asset {request.asset_code}")
-        tx = await self.create_transaction(request, token)
-        url = await self.get_interactive_url(request, token, tx)
-        return fawaris.Sep24PostResponse(
-            url=url,
-            id=tx.id,
-        )
-
 
     @overrides
     async def http_get_fee(
@@ -138,10 +161,12 @@ class Sep24(fawaris.Sep24):
     ) -> fawaris.Sep24TransactionsGetResponse:
         query = tables.sep24_transactions.select()
         if request.asset_code is not None:
-            query = query.where(tables.sep24_transactions.c.asset_code == request.asset_code)
+            query = query.where(
+                tables.sep24_transactions.c.asset_code == request.asset_code
+            )
         transactions = []
         async for row in self.database.iterate(query):
-            transactions.append(self.row_to_transaction(row))
+            transactions.append(Sep24Transaction.from_db_row(row, assets=self.assets))
         return transactions
 
     @overrides
@@ -168,8 +193,11 @@ class Sep24(fawaris.Sep24):
             kind=kind,
             status="pending_user_transfer_start",
             asset=self.assets[request.asset_code],
+            to_address=request.account,
+            amount_out="1234.56",
+            external_extra="test",
         )
-        values = self.transaction_to_values(transaction)
+        values = Sep24Transaction.to_db_values(transaction)
         await self.database.execute(query=query, values=values)
         return transaction
 
@@ -206,7 +234,7 @@ class Sep24(fawaris.Sep24):
             )
         transactions = []
         async for row in self.database.iterate(query):
-            transactions.append(self.row_to_transaction(row))
+            transactions.append(Sep24Transaction.from_db_row(row, assets=self.assets))
         return transactions
 
     @overrides
@@ -215,9 +243,9 @@ class Sep24(fawaris.Sep24):
     ) -> fawaris.Asset:
         return transaction.asset
 
-
     @overrides
-    async def process_withdrawal_received(self,
+    async def process_withdrawal_received(
+        self,
         transaction: fawaris.Sep24Transaction,
         amount_received: str,
         from_address: str,
@@ -231,16 +259,18 @@ class Sep24(fawaris.Sep24):
                         "Expected withdrawal amount_in={} differs from "
                         "received (stellar_transaction_id={}) withdrawal "
                         "amount_in={}".format(
-                            transaction.amount_in, horizon_response["id"], amount_received
+                            transaction.amount_in,
+                            horizon_response["id"],
+                            amount_received,
                         )
-                    )
+                    ),
                 ),
                 self.update_transactions(
                     [transaction],
                     status="error",
                     stellar_transaction_id=horizon_response["id"],
                     paging_token=horizon_response["paging_token"],
-                )
+                ),
             )
         else:
             await asyncio.gather(
@@ -248,7 +278,7 @@ class Sep24(fawaris.Sep24):
                     transaction,
                     "Withdrawal received with correct amount (stellar_transaction_id={})".format(
                         horizon_response["id"]
-                    )
+                    ),
                 ),
                 self.update_transactions(
                     [transaction],
@@ -256,7 +286,7 @@ class Sep24(fawaris.Sep24):
                     from_address=from_address,
                     stellar_transaction_id=horizon_response["id"],
                     paging_token=horizon_response["paging_token"],
-                )
+                ),
             )
 
     @overrides
@@ -272,10 +302,7 @@ class Sep24(fawaris.Sep24):
         coroutines = []
         for transaction in transactions:
             coroutines.append(
-                self.log_transaction_message(
-                    transaction,
-                    f"Updating values: {values}"
-                )
+                self.log_transaction_message(transaction, f"Updating values: {values}")
             )
         coroutines.append(self.database.execute(query))
         await asyncio.gather(*coroutines)
@@ -290,8 +317,8 @@ class Sep24(fawaris.Sep24):
             amount=deposit.amount_out,
             asset_code=deposit.asset.code,
             asset_issuer=deposit.asset.issuer,
-            memo=deposit.memo,
-            memo_type=deposit.memo_type,
+            memo=deposit.deposit_memo,
+            memo_type=deposit.deposit_memo_type,
         )
         if deposit.claimable_balance_supported:
             account_dict = await fetch_account(self.horizon_url, deposit.to_address)
@@ -305,13 +332,10 @@ class Sep24(fawaris.Sep24):
                         amount=deposit.amount_out,
                         asset_code=deposit.asset.code,
                         asset_issuer=deposit.asset.issuer,
-                        memo=deposit.memo,
-                        memo_type=deposit.memo_type,
+                        memo=deposit.deposit_memo,
+                        memo_type=deposit.deposit_memo_type,
                     ),
-                    self.log_transaction_message(
-                        deposit,
-                        "Creating claimable balance"
-                    )
+                    self.log_transaction_message(deposit, "Creating claimable balance"),
                 )
                 tx = results[0]
                 await self.update_transactions(
@@ -327,7 +351,7 @@ class Sep24(fawaris.Sep24):
             self.log_transaction_message(
                 deposit,
                 "Sending stellar payment",
-            )
+            ),
         )
         tx = results[0]
         await self.update_transactions(
@@ -339,50 +363,33 @@ class Sep24(fawaris.Sep24):
 
     @overrides
     async def get_withdraw_anchor_account_cursor(self, account: str) -> Optional[str]:
-        query = tables.sep24_transactions.select().\
-            where(tables.sep24_transactions.c.kind == "withdrawal").\
-            where(tables.sep24_transactions.c.withdraw_anchor_account == account).\
-            where(tables.sep24_transactions.c.status == "completed").\
-            order_by(tables.sep24_transactions.c.started_at.desc())
+        query = (
+            tables.sep24_transactions.select()
+            .where(tables.sep24_transactions.c.kind == "withdrawal")
+            .where(tables.sep24_transactions.c.withdraw_anchor_account == account)
+            .where(tables.sep24_transactions.c.status == "completed")
+            .order_by(tables.sep24_transactions.c.started_at.desc())
+        )
         completed_transactions = []
         row = await self.database.fetch_one(query)
         if row:
-            return self.row_to_transaction(row).paging_token
+            return Sep24Transaction.from_db_row(row, assets=self.assets).paging_token
         return None
 
-    def row_to_transaction(self, row):
-        row = dict(row)
-        asset_code = row.pop("asset_code")
-        asset_issuer = row.pop("asset_issuer")
-        transaction = Sep24Transaction(
-            **{
-                **row,
-                "asset": fawaris.Asset(
-                    code=asset_code,
-                    issuer=asset_issuer,
-                    decimal_places=self.assets[asset_code].decimal_places,
-                )
-            }
-        )
-        return transaction
-
-    def transaction_to_values(self, transaction: Sep24Transaction):
-        values = {
-            "asset_code": transaction.asset.code,
-            "asset_issuer": transaction.asset.issuer,
-        }
-        values.update(transaction.dict())
-        return values
-
-    async def log_transaction_message(self, transaction: Sep24Transaction, message: str):
+    async def log_transaction_message(
+        self, transaction: Sep24Transaction, message: str
+    ):
         query = tables.sep24_transaction_logs.insert()
-        await self.database.execute(query=query, values={
-            "timestamp": datetime.now(timezone.utc),
-            "transaction_id": str(transaction.id),
-            "message": message,
-        })
+        await self.database.execute(
+            query=query,
+            values={
+                "timestamp": datetime.now(timezone.utc),
+                "transaction_id": str(transaction.id),
+                "message": message,
+            },
+        )
 
-    #TODO mark below method as abstractmethod
+    # TODO mark below method as abstractmethod
 
     @overrides
     async def send_withdrawal(self, withdrawal: fawaris.Sep24Transaction) -> None:
@@ -397,7 +404,8 @@ class Sep24(fawaris.Sep24):
 
     @overrides
     async def is_deposit_received(self, deposit: fawaris.Sep24Transaction) -> bool:
-        raise NotImplementedError()
+        print("deposit received (no-op)")
+        return True
 
     @overrides
     async def http_get_info(

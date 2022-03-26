@@ -11,6 +11,7 @@ sep24_transactions = sqlalchemy.Table(
     sqlalchemy.Column("asset_issuer", sqlalchemy.Text),
     sqlalchemy.Column("paging_token", sqlalchemy.Text),
     sqlalchemy.Column("claimable_balance_supported", sqlalchemy.Boolean),
+    sqlalchemy.Column("stellar_transaction_response", sqlalchemy.JSON),
 
     # fields 1-to-1 to fawaris.Sep24Transaction
     sqlalchemy.Column("id", sqlalchemy.Text, primary_key=True),

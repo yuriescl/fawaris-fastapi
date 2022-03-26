@@ -1,5 +1,6 @@
 import asyncio
 import codecs
+import time
 from typing import Optional, Union, Dict
 from typing_extensions import Literal
 from fastapi import Request
@@ -15,11 +16,11 @@ from fawaris_fastapi.exceptions import RequestValidationError
 class AuthenticatedRequest(Request):
     token = None
 
-def authenticate(jwt_key: str):
+def authenticate(jwt_secret: str):
     def wrapper(request: AuthenticatedRequest):
         # TODO handle invalid authorization format
         encoded_jwt = request.headers.get("authorization").split(" ")[1]
-        request.token = fawaris.Sep10Token(encoded_jwt, jwt_key)
+        request.token = fawaris.Sep10Token(encoded_jwt, jwt_secret)
         return request
     return wrapper
 
@@ -64,6 +65,7 @@ async def stellar_send_payment(
     base_fee: Optional[int] = None,
     memo: Optional[Union[str, bytes, int]] = None,
     memo_type: Optional[Literal["text", "hash", "id"]] = None,
+    timeout: Optional[int] = 30,
 ):
     if memo is not None and memo_type is None:
         raise ValueError("'memo_type' is required if 'memo' is set")
@@ -83,10 +85,14 @@ async def stellar_send_payment(
             network_passphrase=network_passphrase,
             base_fee=base_fee,
         )
+        now = int(time.time())
+        builder.add_time_bounds(now - 600, now + timeout)
+        asset = Asset(
+            code=asset_code, issuer=asset_issuer
+        )
         builder.append_payment_op(
             destination=destination_account,
-            asset_code=asset_code,
-            asset_issuer=asset_issuer,
+            asset=asset,
             amount=amount,
             source=source_kp.public_key,
         )
@@ -107,6 +113,7 @@ async def stellar_create_claimable_balance(
     base_fee: Optional[int] = None,
     memo: Optional[Union[str, bytes, int]] = None,
     memo_type: Optional[Literal["text", "hash", "id"]] = None,
+    timeout: Optional[int] = 30,
 ):
     if memo is not None and memo_type is None:
         raise ValueError("'memo_type' is required if 'memo' is set")
@@ -126,6 +133,8 @@ async def stellar_create_claimable_balance(
             network_passphrase=network_passphrase,
             base_fee=base_fee,
         )
+        now = int(time.time())
+        builder.add_time_bounds(now - 600, now + timeout)
         claimant = Claimant(destination=destination_account)
         asset = Asset(
             code=asset_code, issuer=asset_issuer
