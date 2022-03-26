@@ -256,7 +256,7 @@ test = ["pytest (>=6.2.4,<7.0.0)", "pytest-cov (>=2.12.0,<4.0.0)", "mypy (==0.91
 
 [[package]]
 name = "fawaris"
-version = "0.1.13"
+version = "0.1.15"
 description = "Async framework-agnostic Stellar Anchor implementation"
 category = "main"
 optional = false

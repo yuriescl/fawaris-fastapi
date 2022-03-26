@@ -1,7 +1,7 @@
 from fastapi import Request
 import fawaris
 
-from gamma_fawaris.utils import detect_and_get_request_data
+from fawaris_fastapi.utils import detect_and_get_request_data
 
 def register_routes(app, sep10_obj: fawaris.Sep10):
     @app.get("/auth")

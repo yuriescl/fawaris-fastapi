@@ -6,15 +6,18 @@ from stellar_sdk import Network, Keypair
 from pydantic.error_wrappers import ValidationError
 import fawaris
 
-from gamma_fawaris.sep10 import (
+from fawaris_fastapi.sep10 import (
     register_routes as sep10_register_routes,
 )
-from gamma_fawaris.sep24 import (
+from fawaris_fastapi.sep24 import (
     Sep24,
     register_routes as sep24_register_routes,
 )
-from gamma_fawaris.tables import metadata
-from gamma_fawaris import settings
+from fawaris_fastapi.exception_handlers import (
+    register_exception_handlers
+)
+from fawaris_fastapi.tables import metadata
+from fawaris_fastapi import settings
 
 app = FastAPI()
 
@@ -30,8 +33,20 @@ sep10 = fawaris.Sep10(
     signing_secret="SD3ME2YQNWQYBKYX7KNMX5C42WTWMZRZD7DH72K63B56G636AYBQH7YY",
     jwt_key=jwt_key,
 )
-sep24 = Sep24(sep10_jwt_key=jwt_key, database=database, asset_issuers={"USDC": "GCCGEMWASPXY4HWAJTH2BDYKYMLVOAH4K657IDLM5ZE7DGJJCY5EY53J"})
+sep24 = Sep24(
+    sep10_jwt_key=jwt_key,
+    distribution_secret="GAGSVZUGXWKRLBUAKEJP32Q2VX34JKWYD5MRDBKVIXCOABNQXPRQ274M",
+    database=database,
+    assets={
+        "USDC": fawaris.Asset(
+            code="USDC",
+            issuer="GCCGEMWASPXY4HWAJTH2BDYKYMLVOAH4K657IDLM5ZE7DGJJCY5EY53J",
+            decimal_places=7,
+        )
+    }
+)
 
+register_exception_handlers(app)
 sep10_register_routes(app, sep10)
 sep24_register_routes(app, sep24)
 

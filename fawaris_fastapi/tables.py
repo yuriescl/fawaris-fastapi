@@ -6,12 +6,13 @@ sep24_transactions = sqlalchemy.Table(
     "sep24_transactions",
     metadata,
 
-    # extra fields (not part of Sep24Transaction model)
+    # extra fields, specific to this implementation
     sqlalchemy.Column("asset_code", sqlalchemy.Text),
     sqlalchemy.Column("asset_issuer", sqlalchemy.Text),
     sqlalchemy.Column("paging_token", sqlalchemy.Text),
+    sqlalchemy.Column("claimable_balance_supported", sqlalchemy.Boolean),
 
-    # 1-to-1 fields to Sep24Transaction model
+    # fields 1-to-1 to fawaris.Sep24Transaction
     sqlalchemy.Column("id", sqlalchemy.Text, primary_key=True),
     sqlalchemy.Column("kind", sqlalchemy.Text),
     sqlalchemy.Column("status", sqlalchemy.Text),
