@@ -1,7 +1,7 @@
 import sqlalchemy
 import typer
-from gamma_fawaris.tables import metadata
-from gamma_fawaris import settings
+from fawaris_fastapi.tables import metadata
+from fawaris_fastapi import settings
 
 def main():
     engine = sqlalchemy.create_engine(

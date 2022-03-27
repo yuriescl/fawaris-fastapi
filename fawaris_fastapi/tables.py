@@ -1,26 +1,30 @@
 import sqlalchemy
+from sqlalchemy.dialects import sqlite
 
 metadata = sqlalchemy.MetaData()
 
 sep24_transactions = sqlalchemy.Table(
-    "transactions",
+    "sep24_transactions",
     metadata,
 
-    # extra fields (not part of Sep24Transaction model)
+    # extra fields, specific to this implementation
     sqlalchemy.Column("asset_code", sqlalchemy.Text),
     sqlalchemy.Column("asset_issuer", sqlalchemy.Text),
+    sqlalchemy.Column("paging_token", sqlalchemy.Text),
+    sqlalchemy.Column("claimable_balance_supported", sqlalchemy.Boolean),
+    sqlalchemy.Column("stellar_transaction_response", sqlalchemy.JSON),
 
-    # 1-to-1 fields to Sep24Transaction model
+    # fields 1-to-1 to fawaris.Sep24Transaction
     sqlalchemy.Column("id", sqlalchemy.Text, primary_key=True),
     sqlalchemy.Column("kind", sqlalchemy.Text),
     sqlalchemy.Column("status", sqlalchemy.Text),
     sqlalchemy.Column("status_eta", sqlalchemy.Integer),
     sqlalchemy.Column("more_info_url", sqlalchemy.Text),
-    sqlalchemy.Column("amount_in", sqlalchemy.Numeric),
+    sqlalchemy.Column("amount_in", sqlalchemy.Text),
     sqlalchemy.Column("amount_in_asset", sqlalchemy.Text),
-    sqlalchemy.Column("amount_out", sqlalchemy.Numeric),
+    sqlalchemy.Column("amount_out", sqlalchemy.Text),
     sqlalchemy.Column("amount_out_asset", sqlalchemy.Text),
-    sqlalchemy.Column("amount_fee", sqlalchemy.Numeric),
+    sqlalchemy.Column("amount_fee", sqlalchemy.Text),
     sqlalchemy.Column("amount_fee_asset", sqlalchemy.Text),
     sqlalchemy.Column("from_address", sqlalchemy.Text),
     sqlalchemy.Column("to_address", sqlalchemy.Text),
@@ -42,3 +46,11 @@ sep24_transactions = sqlalchemy.Table(
     sqlalchemy.Column("claimable_balance_id", sqlalchemy.Text),
 )
 
+sep24_transaction_logs = sqlalchemy.Table(
+    "sep24_transaction_logs",
+    metadata,
+    sqlalchemy.Column("id", sqlalchemy.Integer, primary_key=True, autoincrement=True),
+    sqlalchemy.Column("timestamp", sqlalchemy.DateTime),
+    sqlalchemy.Column("transaction_id", sqlalchemy.Text),
+    sqlalchemy.Column("message", sqlalchemy.Text),
+)
