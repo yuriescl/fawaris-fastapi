@@ -251,41 +251,37 @@ class Sep24(fawaris.Sep24):
         horizon_response: Dict,
     ):
         if Decimal(amount_received) != Decimal(transaction.amount_in):
-            await asyncio.gather(
-                self.log_transaction_message(
-                    transaction,
-                    (
-                        "Expected withdrawal amount_in={} differs from "
-                        "received (stellar_transaction_id={}) withdrawal "
-                        "amount_in={}".format(
-                            transaction.amount_in,
-                            horizon_response["id"],
-                            amount_received,
-                        )
-                    ),
-                ),
-                self.update_transactions(
-                    [transaction],
-                    status="error",
-                    stellar_transaction_id=horizon_response["id"],
-                    paging_token=horizon_response["paging_token"],
+            await self.log_transaction_message(
+                transaction,
+                (
+                    "Expected withdrawal amount_in={} differs from "
+                    "received (stellar_transaction_id={}) withdrawal "
+                    "amount_in={}".format(
+                        transaction.amount_in,
+                        horizon_response["id"],
+                        amount_received,
+                    )
                 ),
             )
+            await self.update_transactions(
+                [transaction],
+                status="error",
+                stellar_transaction_id=horizon_response["id"],
+                paging_token=horizon_response["paging_token"],
+            )
         else:
-            await asyncio.gather(
-                self.log_transaction_message(
-                    transaction,
-                    "Withdrawal received with correct amount (stellar_transaction_id={})".format(
-                        horizon_response["id"]
-                    ),
+            await self.log_transaction_message(
+                transaction,
+                "Withdrawal received with correct amount (stellar_transaction_id={})".format(
+                    horizon_response["id"]
                 ),
-                self.update_transactions(
-                    [transaction],
-                    status="pending_anchor",
-                    from_address=from_address,
-                    stellar_transaction_id=horizon_response["id"],
-                    paging_token=horizon_response["paging_token"],
-                ),
+            )
+            await self.update_transactions(
+                [transaction],
+                status="pending_anchor",
+                from_address=from_address,
+                stellar_transaction_id=horizon_response["id"],
+                paging_token=horizon_response["paging_token"],
             )
 
     @overrides
@@ -303,8 +299,8 @@ class Sep24(fawaris.Sep24):
             coroutines.append(
                 self.log_transaction_message(transaction, f"Updating values: {values}")
             )
-        coroutines.append(self.database.execute(query))
         await asyncio.gather(*coroutines)
+        await self.database.execute(query)
 
     @overrides
     async def send_deposit(self, deposit: fawaris.Sep24Transaction) -> None:
@@ -322,21 +318,18 @@ class Sep24(fawaris.Sep24):
         if deposit.claimable_balance_supported:
             account_dict = await fetch_account(self.horizon_url, deposit.to_address)
             if is_pending_trust(account_dict, deposit.asset.code, deposit.asset.issuer):
-                results = await asyncio.gather(
-                    stellar_create_claimable_balance(
-                        source_secret=self.distribution_secret,
-                        horizon_url=self.horizon_url,
-                        network_passphrase=self.network_passphrase,
-                        destination_account=deposit.to_address,
-                        amount=deposit.amount_out,
-                        asset_code=deposit.asset.code,
-                        asset_issuer=deposit.asset.issuer,
-                        memo=deposit.deposit_memo,
-                        memo_type=deposit.deposit_memo_type,
-                    ),
-                    self.log_transaction_message(deposit, "Creating claimable balance"),
+                await self.log_transaction_message(deposit, "Creating claimable balance")
+                tx = await stellar_create_claimable_balance(
+                    source_secret=self.distribution_secret,
+                    horizon_url=self.horizon_url,
+                    network_passphrase=self.network_passphrase,
+                    destination_account=deposit.to_address,
+                    amount=deposit.amount_out,
+                    asset_code=deposit.asset.code,
+                    asset_issuer=deposit.asset.issuer,
+                    memo=deposit.deposit_memo,
+                    memo_type=deposit.deposit_memo_type,
                 )
-                tx = results[0]
                 await self.update_transactions(
                     [deposit],
                     status="completed",
@@ -345,14 +338,11 @@ class Sep24(fawaris.Sep24):
                 )
                 return None
 
-        results = await asyncio.gather(
-            stellar_send_payment(**payment_args),
-            self.log_transaction_message(
-                deposit,
-                "Sending stellar payment",
-            ),
+        await self.log_transaction_message(
+            deposit,
+            "Sending stellar payment",
         )
-        tx = results[0]
+        tx = await stellar_send_payment(**payment_args)
         await self.update_transactions(
             [deposit],
             status="completed",
@@ -392,18 +382,18 @@ class Sep24(fawaris.Sep24):
 
     @overrides
     async def send_withdrawal(self, withdrawal: fawaris.Sep24Transaction) -> None:
-        print("sending withdrawal (no-op)")
+        print("sending withdrawal to user")
 
     @overrides
     async def is_withdrawal_complete(
         self, withdrawal: fawaris.Sep24Transaction
     ) -> bool:
-        print("withdrawal not complete (no-op)")
+        print("withdrawal not complete")
         return False
 
     @overrides
     async def is_deposit_received(self, deposit: fawaris.Sep24Transaction) -> bool:
-        print("deposit received (no-op)")
+        print("deposit received")
         return True
 
     @overrides
@@ -422,3 +412,4 @@ class Sep24(fawaris.Sep24):
                 ),
             },
         }
+

@@ -1,4 +1,5 @@
 import sqlalchemy
+from sqlalchemy.dialects import sqlite
 
 metadata = sqlalchemy.MetaData()
 

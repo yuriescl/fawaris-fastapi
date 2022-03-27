@@ -7,13 +7,13 @@ import logging
 from databases import Database
 
 from fawaris_fastapi import settings
-from fawaris_fastapi.sep24 import new as new_sep24
+from fawaris_fastapi import Sep24
 
 terminate = False
 
 logger = logging.getLogger(__name__)
 database = Database(settings.ASYNC_DATABASE_URL)
-sep24 = new_sep24(database)
+sep24 = Sep24.new_instance(database)
 
 def exit_gracefully(*_):  # pragma: no cover
     print("Exiting task_all...")
