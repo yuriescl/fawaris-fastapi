@@ -3,6 +3,8 @@
 Stellar Anchor implementation using FastAPI.  
 Implements the [fawaris-python](https://github.com/yuriescl/fawaris-python) interface.
 
+This project is heavily inspired and contains code from [django-polaris](https://github.com/stellar/django-polaris).
+
 Main dependencies:
 - [fawaris-python](https://github.com/yuriescl/fawaris-python)
 - [fastapi](https://github.com/tiangolo/fastapi)
