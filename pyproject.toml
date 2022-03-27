@@ -8,7 +8,7 @@ homepage = "https://github.com/yuriescl/fawaris-fastapi"
 
 [tool.poetry.dependencies]
 python = "^3.7"
-fawaris = "^0.1.36"
+fawaris = "^0.1.37"
 databases = "^0.5.5"
 uvicorn = "^0.17.6"
 fastapi = "^0.75.0"
