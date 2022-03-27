@@ -1,9 +1,10 @@
 [tool.poetry]
 name = "fawaris_fastapi"
-version = "0.1.0"
+version = "0.1.1"
 description = "Stellar Anchor implementation using FastAPI"
 authors = ["Yuri Escalianti <yuriescl@gmail.com>"]
 license = "Apache License Version 2.0"
+homepage = "https://github.com/yuriescl/fawaris-fastapi"
 
 [tool.poetry.dependencies]
 python = "^3.7"
