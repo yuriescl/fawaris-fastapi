@@ -10,7 +10,9 @@ Main dependencies:
 - [fastapi](https://github.com/tiangolo/fastapi)
 - [databases](https://github.com/encode/databases)
 
-TODO: add instructions on how to use/deploy
+TODO:
+- add instructions on how to use/deploy
+- change db to Tortoise
 
 How to setup development environment:
 ```
